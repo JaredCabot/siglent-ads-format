@@ -1,0 +1,16 @@
+# Vendor firmware update images (copyright) — bring your own
+*.ADS
+/SDG2000X_V2.01.01.17R5_EN/
+/SDG2000X_V2.01.01.39R7_EN/
+
+# Third-party reference cipher (analogNewbie's EEVblog attachment) — not redistributed
+/pyDesSiglent.zip
+/pyDesSiglent.py
+/firmware_extract/pyDesSiglent.py
+
+# Build artifacts / scratch
+__pycache__/
+*.pyc
+
+# Local working notes (personal handover; not published)
+/HANDOVER.md
