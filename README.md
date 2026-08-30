@@ -17,6 +17,7 @@ no affiliation with or endorsement from Siglent Technologies.
 | `SDG2000X_ADS_Format_Specification.pdf` | The full format specification: the 112-byte header, the obfuscation transform, the non-standard two-key 3DES layer, the ZIP container, member payloads, integrity checks, and a reference decoder. Derived from an SDG2000X release and cross-checked against the instrument's own application binary. |
 | `firmware_extract/ads_decode_menu.py` | Interactive, menu-driven `.ADS` tool: inspect, verify, extract to a `.zip` or folder, and repackage back into a `.ADS`. Pure standard-library Python 3, no dependencies. |
 | `firmware_extract/ads_decode_full.py` | Minimal, dependency-free reference decoder and verifier (the exact decode pipeline). |
+| `SPD3000X_ADS_Format_Notes.md` | The SPD3000X / SPD3303X power supplies, whose `.ADS` uses the same container but holds a raw ARM image instead of a ZIP archive. Includes the check that tells a correct decode from a plausible-looking wrong one. |
 
 ## Quick start
 
@@ -42,8 +43,10 @@ it is only obfuscation over compressed data:
    a mirrored decrypt, so a stock 3DES library will **not** decrypt them.
 3. The payload is de-obfuscated: a whole-payload byte reversal, a second-half
    complement, and a triangular-offset complement.
-4. What remains is a 52-byte container header followed by a genuine ZIP archive
-   (members, central directory and end-of-directory record).
+4. What remains is a 52-byte container header followed by the payload proper:
+   a genuine ZIP archive on most models (members, central directory and
+   end-of-directory record), or, on the SPD3000X power supplies, a raw ARM
+   firmware image with no archive around it at all.
 
 The 16-byte 3DES key is a fixed constant embedded in shipping firmware; it is
 reproduced in the specification only because it is necessary to read the format.
@@ -89,3 +92,7 @@ building on the EEVblog community thread linked above.
 
 SDG2000X remote-interface (SCPI) tools and reference:
 https://github.com/JaredCabot/sdg2000x-firmware
+
+SPD3303X service tooling and firmware reference, the instrument whose image the
+SPD3000X notes here decode:
+https://github.com/JaredCabot/spd3303x-service-tools

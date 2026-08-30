@@ -1,5 +1,8 @@
 # Vendor firmware update images (copyright) — bring your own
 *.ADS
+
+# Decoded firmware images: derived from a vendor .ADS, same copyright
+*.bin
 /SDG2000X_V2.01.01.17R5_EN/
 /SDG2000X_V2.01.01.39R7_EN/
 
