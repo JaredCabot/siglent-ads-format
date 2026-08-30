@@ -1,10 +1,15 @@
 # Vendor firmware update images (copyright) — bring your own
 *.ADS
 
+# Vendor release folders, wherever they are kept. These hold Siglent's own
+# release-note PDFs as well as the .ADS, so ignore the whole tree, not just
+# the images.
+Firmware Images/
+SDG2000X_V2.01.01.17R5_EN/
+SDG2000X_V2.01.01.39R7_EN/
+
 # Decoded firmware images: derived from a vendor .ADS, same copyright
 *.bin
-/SDG2000X_V2.01.01.17R5_EN/
-/SDG2000X_V2.01.01.39R7_EN/
 
 # Third-party reference cipher (analogNewbie's EEVblog attachment) — not redistributed
 /pyDesSiglent.zip
