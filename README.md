@@ -88,4 +88,4 @@ building on the EEVblog community thread linked above.
 ## Related
 
 SDG2000X remote-interface (SCPI) tools and reference:
-https://github.com/JaredCabot/sdg2000x-firmware-tools
+https://github.com/JaredCabot/sdg2000x-firmware
