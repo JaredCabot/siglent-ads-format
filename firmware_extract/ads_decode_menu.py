@@ -39,7 +39,7 @@ import struct
 import zlib
 import zipfile
 
-VERSION = "1.4 (2026-08-29)"   # corrected non-standard LSB-first 3DES; both P39R7 (nested) and P17R5 (flat) layouts
+VERSION = "1.5 (2026-08-30)"   # both check words are NEGATED byte sums; repackage now recomputes the file header
 
 
 def _pause(msg=None):
@@ -249,12 +249,37 @@ def build_dir_member(name: str) -> bytes:
                        0, 0, 0, len(nb), 0) + nb
 
 
+def check_word(data, extra=0) -> int:
+    """Siglent's container check word: the two's-complement NEGATION of a 32-bit
+    running byte sum, so that summing the region *and* the stored word gives
+    zero. That is what the firmware's crc_lib_verify_check_number tests for.
+
+    Confirmed against SDG2000X P39R7 ($C3F3F2A3) and P17R5 ($9A8F97D2) and the
+    SPD3303X-E raw-image release ($FABD9BA6). A plain (un-negated) sum, which
+    earlier versions of this tool wrote and which the specification PDF Rev 1.1
+    describes, matches none of them."""
+    return (-(sum(data) + extra)) & 0xffffffff
+
+
+def rebuild_header(ref112: bytes, stream: bytes, payload: bytes) -> bytes:
+    """Return a corrected 112-byte encrypted file header for a rebuilt .ADS.
+
+    The reference header supplies the product id and the vendor tags; the
+    decoded length and the file check word are recomputed for the new payload.
+    The file check word covers the raw (still encrypted and obfuscated) payload
+    plus the decrypted header from offset 4 -- i.e. the field excludes itself."""
+    h = bytearray(des3_ecb_decrypt(ref112, K1, K2))
+    struct.pack_into("<I", h, 0x04, len(stream))     # decoded payload length
+    struct.pack_into("<I", h, 0x00, 0)               # excluded from its own sum
+    struct.pack_into("<I", h, 0x00, check_word(payload, sum(h[4:])))
+    return des3_ecb_encrypt(bytes(h), K1, K2)
+
+
 def assemble_stream(records) -> bytes:
     """records: list of member-record bytes. Return the decoded-form stream:
     0x34-byte container header + back-to-back member records."""
     body = b"".join(records)
-    checksum = sum(body) & 0xffffffff
-    header = struct.pack("<III", checksum, len(body), 7) + b"\x00" * (0x34 - 12)
+    header = struct.pack("<III", check_word(body), len(body), 7) + b"\x00" * (0x34 - 12)
     return header + body
 
 
@@ -426,8 +451,12 @@ def act_info(sess):
     print("  File size       : %s bytes" % human(len(sess.raw)))
     print("  Payload         : %s bytes (file[112:])" % human(len(sess.raw) - HEADER))
     print("  Container header:")
-    print("     checksum word : 0x%08X  (32-bit byte-sum, not a CRC)" % chksum)
-    print("     length word   : 0x%08X  (%s bytes)" % (length, human(length)))
+    body = st[0x34:0x34 + length]
+    print("     checksum word : 0x%08X  (negated 32-bit byte-sum, not a CRC)  %s"
+          % (chksum, "OK" if check_word(body) == chksum else "MISMATCH"))
+    print("     length word   : 0x%08X  (%s bytes)  %s"
+          % (length, human(length),
+             "OK" if length == len(st) - 0x34 else "MISMATCH"))
     print("     type word     : 0x%08X" % ctype)
     print("  Packages        :")
     for name, meth, crc, csize, usize, data in sess.members:
@@ -575,7 +604,9 @@ def act_repackage(sess):
                 records.append(build_member(arc, data)); nf += 1
         print("  Built %d file members and %d directory members." % (nf, nd))
 
-    out = header + confuse(assemble_stream(records))
+    stream = assemble_stream(records)
+    payload = confuse(stream)
+    out = rebuild_header(header, stream, payload) + payload
 
     base = "repacked.ADS"
     dest = input("Save .ADS as [%s]: " % base).strip() or base
@@ -587,11 +618,12 @@ def act_repackage(sess):
         f.write(out)
     print("  Wrote %s (%s bytes)" % (dest, human(len(out))))
     print()
-    print("  This file re-decodes with this tool exactly. It is NOT verified to")
-    print("  be accepted by the instrument: the 112-byte header is copied from a")
-    print("  reference file and the container checksum uses the documented byte-sum,")
-    print("  which may not match the firmware's own integrity check. Flashing a")
-    print("  modified image can render an instrument unbootable with no recovery.")
+    print("  This file re-decodes with this tool exactly. Both check words are")
+    print("  recomputed with the negated byte-sum the firmware actually verifies,")
+    print("  and the product id and vendor tags are carried over from the reference")
+    print("  header. It is still NOT verified to be accepted by the instrument:")
+    print("  no repackaged file has been flashed. Flashing a modified image can")
+    print("  render an instrument unbootable with no recovery.")
 
 
 # --------------------------------------------------------------------------

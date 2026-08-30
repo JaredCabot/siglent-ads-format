@@ -68,7 +68,7 @@ The container record for this file:
 
 | Offset | Type | Value | Meaning |
 |---|---|---|---|
-| `$00` | u32 | `$FABD9BA6` | Checksum of the member region (see §4) |
+| `$00` | u32 | `$FABD9BA6` | Check word over the member region (§4) |
 | `$04` | u32 | `$0007B328` | Length of the member region: 504,616 = payload − 52 |
 | `$08` | u8 | `7` | Type code, the same value as the SDG2000X releases |
 | `$09`+ | u8[] | 0 | Reserved, zero to `$33` |
@@ -97,7 +97,7 @@ specification:
 
 | Offset | Field | SPD3303X-E | SDG2000X P39R7 |
 |---|---|---|---|
-| `$00` | File CRC | `$FD82E704` | `$CC677E5E` |
+| `$00` | File check word (§4) | `$FD82E704` | `$CC677E5E` |
 | `$04` | Decoded payload length | `$0007B35C` | `$026A5DD7` |
 | `$0C` | Product id | `71` | `10600` |
 | `$26` | Vendor tag | `SIGLENT` | `SIGLENT` |
@@ -125,7 +125,15 @@ most of the image. The damage is confined to 10,240 bytes at the end and a
 5,120-byte window in the middle, which is exactly where the ARM Compiler puts
 `Region$$Table` and the compressed `.data` initialiser.
 
-**Check the decode this way.** For any ARMCC-built image:
+The container check word of §4 does catch this — it is computed over the member
+region *after* decoding, and a skipped 3DES stage changes it (on P17R5 the sum
+comes out `$9A85B8BB` against `$9A8F97D2` stored). That check was an open
+question when these notes were first written, which is why the structural test
+below was needed. Keep both: the check word is one number and model-independent,
+while the test below is independent of the check-word formula and shows *where*
+the damage is.
+
+**Check the decode this way too.** For any ARMCC-built image:
 
 1. Read the two words at image offset `0x1BC` (the `adr`-relative pair loaded by
    `__scatterload_rt2`).
@@ -151,49 +159,69 @@ end.
 
 ---
 
-## 4. Open question: the container checksum
+## 4. The check words: negated byte sums
 
-The specification records that `crc_lib_get_check_sum` on the SDG2000X is a plain
-32-bit running sum of the member-region bytes. **That does not reproduce the
-SPD3000X value**, and neither do the obvious alternatives. For this file the
-record's checksum field is `$FABD9BA6` and the candidates are:
+Both integrity fields in the format — the container record's checksum at `$00`
+and the file header's word at `$00` — are the **two's-complement negation of a
+32-bit running byte sum**. The vendor stores `-sum` so that adding the region
+*and* the stored word together gives zero, which is what the firmware's
+`crc_lib_verify_check_number` tests for. `crc_lib_get_check_sum` computes the
+plain sum; the negation happens where the result is stored and checked.
 
-| Candidate over member region `payload[0x34 : 0x34+0x7B328]` | Value |
-|---|---|
-| 32-bit byte sum (the SDG2000X algorithm) | `$0542645A` |
-| 32-bit halfword sum | `$CFBCACCA` |
-| 32-bit word sum | `$FCD21B07` |
-| CRC-32 (zlib) | `$CA6BC10B` |
-| CRC-32 complemented | `$35943EF4` |
+**The specification PDF Rev 1.1, Chapter 5, describes the stored value as the
+plain un-negated sum. That is an error** — see `ERRATA.md`. The values printed
+in the PDF are correct; only the description of what produces them is wrong.
 
-The same is true of the outer header's file-CRC field, `$FD82E704`: no byte sum,
-word sum or CRC-32 over the raw payload, the decrypted payload or the
-de-obfuscated payload matches it.
+### Container record checksum
 
-Two readings are possible, and the evidence does not yet separate them:
+`checksum = (-sum(payload[0x34 : 0x34+length])) & 0xFFFFFFFF`
 
-* the SPD3000X bootloader uses a different check routine from the SDG2000X's
-  `crc_lib_get_check_sum`; or
-* the sum is taken over a span that is offset or truncated relative to the one
-  assumed here.
+| Release | Byte sum | Stored | |
+|---|---|---|---|
+| SDG2000X P39R7 | `$3C0C0D5D` | `$C3F3F2A3` | sums to 2³² |
+| SDG2000X P17R5 | `$6570682E` | `$9A8F97D2` | sums to 2³² |
+| SPD3303X-E | `$0542645A` | `$FABD9BA6` | sums to 2³² |
 
-This is worth settling before anyone tries to **repackage** an SPD3000X `.ADS`.
-The recovered image itself is not in doubt, since the `Region$$Table` test above
-passes, the header length field matches exactly, and the whole image
-disassembles cleanly with no high-entropy residue. But a repackaged file will
-be rejected by the instrument unless this field can be recomputed.
+The value tabulated as a non-match in an earlier draft of these notes,
+`$0542645A`, was the answer: it is the negation of the stored word, not an
+unrelated candidate.
 
-The routine to read is the SPD3000X bootloader's equivalent of
-`dev_upgrade_detail_acitve`. It is **not** in the application image shipped in
-the `.ADS`, which starts at `0x08040000`; it lives in the bootloader below that,
-so recovering it needs a flash dump rather than another update file.
+### File header check word
+
+The header's `$00` field is **not a CRC** despite being named one in earlier
+drafts. It covers the **raw** payload — still encrypted and still obfuscated,
+i.e. `file[112:]` exactly as it sits on disk — plus the *decrypted* header
+from offset 4, so the field excludes itself:
+
+`crc = (-(sum(file[112:]) + sum(decrypted_header[4:112]))) & 0xFFFFFFFF`
+
+| Release | Stored | Recomputed |
+|---|---|---|
+| SDG2000X P39R7 | `$CC677E5E` | `$CC677E5E` |
+| SDG2000X P17R5 | `$9EB260FA` | `$9EB260FA` |
+| SPD3303X-E | `$FD82E704` | `$FD82E704` |
+
+For the SPD3303X-E, whose `.ADS` was not to hand, the raw payload was
+reconstructed from the extracted image by re-obfuscating and re-encrypting it.
+That it lands on the stored word exactly also confirms the reconstruction is
+byte-exact and that the container record's reserved bytes really are zero.
+
+Both formulas are implemented as `check_word()` in `ads_decode_full.py` and
+`ads_decode_menu.py`, which now verify them on load and recompute them on
+repackage. `rebuild_header()` in the menu tool reproduces the original 112-byte
+header of both SDG releases byte-for-byte from their own decoded payloads.
+
+**Repackaging is no longer blocked on this question**, but it remains untested
+on hardware: no repackaged file has been flashed to an instrument, and any
+further check the bootloader applies below `0x08040000` is still unknown.
 
 ---
 
 ## 5. Reference decoder
 
-Pure standard library, no changes to the existing cipher code. Uses
-`ads_decode_full` from this repository for the 3DES and the header.
+Pure standard library, no changes to the existing cipher code. Everything up to
+the de-obfuscated payload is `ads_decode_full.decode()` unchanged — the SPD3000X
+needs no separate copy of the pipeline.
 
 ```python
 #!/usr/bin/env python3
@@ -201,44 +229,23 @@ Pure standard library, no changes to the existing cipher code. Uses
 import sys, struct
 import ads_decode_full as A          # from firmware_extract/
 
-HEADER  = 112
-REGIONS = [(0x00000, 0x2800), (0x2E777, 0x1400)]
-RECORD  = 0x34
-BASE    = 0x08040000                 # SPD3303X-E application link address
-
-
-def deconfuse(payload: bytes) -> bytes:
-    b = bytearray(payload)[::-1]
-    L = len(b)
-    for i in range(L - L // 2, L):
-        b[i] ^= 0xFF
-    n = 1
-    while True:
-        t = n * (n + 1) // 2
-        if t >= L:
-            break
-        b[t] ^= 0xFF
-        n += 1
-    return bytes(b)
-
-
-def decode(ads: bytes) -> bytes:
-    payload = bytearray(ads[HEADER:])
-    for off, ln in REGIONS:
-        n = ln // 8 * 8
-        payload[off:off + n] = A._des3(bytes(payload[off:off + n]))
-    return deconfuse(bytes(payload))
+RECORD = 0x34
+BASE   = 0x08040000                  # SPD3303X-E application link address
 
 
 def main(path):
     ads = open(path, 'rb').read()
     hdr = A.decode_header(ads)
-    out = decode(ads)
+    out = A.decode(ads)              # identical to the SDG2000X path
 
     assert hdr['size'] == len(out), "header length field disagrees with decode"
+    assert A.check_word(ads[112:], sum(A._des3(ads[:112])[4:])) == hdr['crc'], \
+        "file check word does not verify"
+
     chk, length, kind = struct.unpack_from('<IIB', out, 0)
     body = out[RECORD:RECORD + length]
     assert len(body) == length, "container record length disagrees with payload"
+    assert A.check_word(body) == chk, "container check word does not verify"
 
     print("product id %d  vendor %r  usb %r" %
           (hdr['product_id'], hdr['vendor'], hdr['usb_host']))
@@ -250,8 +257,7 @@ def main(path):
 
     # Raw image. Verify it with the ARMCC scatter-load table.
     w0, w1 = struct.unpack_from('<2I', body, 0x1BC)
-    tbl = (BASE + 0x1BC + w0) - BASE
-    lim = (BASE + 0x1BC + w1) - BASE
+    tbl, lim = 0x1BC + w0, 0x1BC + w1
     ok = True
     for o in range(tbl, lim, 16):
         src, dst, size, fn = struct.unpack_from('<4I', body, o)
@@ -280,25 +286,38 @@ Region$$Table sane: True
 wrote ....ADS.bin  (504616 bytes, load at $08040000)
 ```
 
+The two `Region$$Table` bounds are `$080BAE78` (base) and `$080BAE98`
+(limit, exclusive), giving the two 16-byte entries above.
+
 ---
 
-## 6. Suggested changes to the existing tools
+## 6. Changes to the existing tools
 
-`firmware_extract/ads_decode_menu.py` assumes the member region is a ZIP. Three
-small changes make it handle both families:
+**Done.** Both decoders now carry `check_word()` and verify the file check word
+and the container checksum on every decode; `ads_decode_menu.py` (v1.5)
+recomputes both when repackaging, via `rebuild_header()`, instead of copying a
+reference header verbatim and writing an un-negated sum. Its repackage warning
+no longer claims the checksum may be wrong, because it no longer is — only the
+"never flashed to an instrument" caveat remains.
+
+**Still outstanding**, and untestable here until an SPD3000X `.ADS` is to hand
+rather than just the extracted image:
 
 1. **Sniff the member region.** `PK\x03\x04` at offset `0x34` selects the archive
    path; anything else is a raw image. Do not use the record's type code, which
-   is 7 either way.
-2. **Add a "extract raw image" action** that writes `payload[0x34:0x34+length]`
+   is 7 either way. Today `ads_decode_menu.py` refuses a raw-payload file
+   outright — `Session.open` raises *"no archive members found"* — so the menu
+   tool cannot open an SPD3000X release at all.
+2. **Add an "extract raw image" action** that writes `payload[0x34:0x34+length]`
    to a `.bin` and reports the link address inferred from the vector table
    (`vector[1] & 0xFFFF0000`, which gives `$08040000` here).
-3. **Refuse to repackage a raw-payload file** until the checksum of §4 is
-   understood, rather than emitting one whose record field cannot be verified.
-
-The `Region$$Table` check of §3 is worth adding to the "verify" action for
-raw-payload files; it is the only integrity test currently available for them,
-and it is decisive.
+3. **Add the `Region$$Table` check of §3 to the verify action** for raw-payload
+   files, as a second opinion. It is no longer the only test: the container
+   check word of §4 covers the member region as decoded and so catches a skipped
+   3DES stage on its own (measured on P17R5: `$9A85B8BB` computed against
+   `$9A8F97D2` stored). `Region$$Table` remains worth having because it is
+   independent of the check-word formula rather than derived from it, and it
+   points at *where* a decode went wrong rather than only that it did.
 
 ---
 

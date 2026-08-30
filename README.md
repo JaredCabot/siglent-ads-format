@@ -14,10 +14,12 @@ no affiliation with or endorsement from Siglent Technologies.
 
 | Path | What it is |
 |------|------------|
-| `SDG2000X_ADS_Format_Specification.pdf` | The full format specification: the 112-byte header, the obfuscation transform, the non-standard two-key 3DES layer, the ZIP container, member payloads, integrity checks, and a reference decoder. Derived from an SDG2000X release and cross-checked against the instrument's own application binary. |
+| `SDG2000X_ADS_Format_Specification.pdf` | The full format specification (Rev 1.2): the 112-byte header, the obfuscation transform, the non-standard two-key 3DES layer, the ZIP container, member payloads, integrity checks, and a reference decoder. Derived from an SDG2000X release and cross-checked against the instrument's own application binary. |
 | `firmware_extract/ads_decode_menu.py` | Interactive, menu-driven `.ADS` tool: inspect, verify, extract to a `.zip` or folder, and repackage back into a `.ADS`. Pure standard-library Python 3, no dependencies. |
 | `firmware_extract/ads_decode_full.py` | Minimal, dependency-free reference decoder and verifier (the exact decode pipeline). |
 | `SPD3000X_ADS_Format_Notes.md` | The SPD3000X / SPD3303X power supplies, whose `.ADS` uses the same container but holds a raw ARM image instead of a ZIP archive. Includes the check that tells a correct decode from a plausible-looking wrong one. |
+| `ERRATA.md` | The corrections that produced Rev 1.2 of the specification, with the measurements behind each. Kept as the working record; all of it is applied in the PDF above. |
+| `doc/build_ads_format_spec.py` | The build script that renders the specification PDF. The script is the source; the PDF is its output. Needs `hpmanual.py` from the hp-manual-template skill and `reportlab`. |
 
 ## Quick start
 
@@ -47,6 +49,12 @@ it is only obfuscation over compressed data:
    a genuine ZIP archive on most models (members, central directory and
    end-of-directory record), or, on the SPD3000X power supplies, a raw ARM
    firmware image with no archive around it at all.
+
+Two integrity words guard the file — one in the 112-byte header, one in the
+container record. Both are the two's-complement negation of a 32-bit byte sum,
+so region plus stored word comes to zero. The decoders verify both on every
+decode. Revision 1.1 of the specification described them as plain un-negated
+sums; Revision 1.2 corrects that, and `ERRATA.md` records the evidence.
 
 The 16-byte 3DES key is a fixed constant embedded in shipping firmware; it is
 reproduced in the specification only because it is necessary to read the format.

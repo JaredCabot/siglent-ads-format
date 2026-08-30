@@ -108,6 +108,14 @@ def decode(ads: bytes) -> bytes:
         b[t]^=0xFF; n+=1
     return bytes(b)
 
+def check_word(data, extra=0) -> int:
+    """The container/file check word: the two's-complement NEGATION of a 32-bit
+    running byte sum, so region + stored word sums to zero (the firmware's
+    crc_lib_verify_check_number). Verified on P39R7, P17R5 and the SPD3303X-E
+    raw-image release. NOTE: the specification PDF Rev 1.1 Chapter 5 describes
+    this as a plain un-negated sum; that is an error, see ERRATA.md."""
+    return (-(sum(data) + extra)) & 0xffffffff
+
 def decode_header(ads: bytes):
     h=_des3(ads[:HEADER])
     return {"crc":struct.unpack('<I',h[0:4])[0],
@@ -140,6 +148,13 @@ if __name__=="__main__":
         hdr["crc"],hdr["size"],hdr["product_id"],hdr["vendor"],hdr["usb_host"]))
     print("decoded length: 0x%x (header size field %s)"%(
         len(st),"matches" if hdr["size"]==len(st) else "MISMATCH"))
+    fchk=check_word(ads[HEADER:],sum(_des3(ads[:HEADER])[4:]))
+    print("file check word: 0x%08x (%s)"%(
+        hdr["crc"],"verifies" if fchk==hdr["crc"] else "MISMATCH: computed 0x%08x"%fchk))
+    rchk,rlen=struct.unpack_from("<II",st,0)
+    print("container record: checksum 0x%08x (%s), length 0x%x (%s)"%(
+        rchk,"verifies" if check_word(st[0x34:0x34+rlen])==rchk else "MISMATCH",
+        rlen,"matches" if rlen==len(st)-0x34 else "MISMATCH"))
     z0=st.find(b"PK\x03\x04")
     acc=[0,0]; _walk(st[z0:],"container",1,acc)
     print("TOTAL: %d files, %d bad CRC"%(acc[0],acc[1]))
