@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: .ADS Format Specification
+    url: https://github.com/JaredCabot/siglent-ads-format/blob/main/SDG2000X_ADS_Format_Specification.pdf
+    about: The container format, check words and payload layout.
+  - name: Errata
+    url: https://github.com/JaredCabot/siglent-ads-format/blob/main/ERRATA.md
+    about: Known corrections to the specification.

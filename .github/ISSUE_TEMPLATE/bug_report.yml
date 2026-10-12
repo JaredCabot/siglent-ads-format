@@ -1,0 +1,88 @@
+name: Bug report
+description: Something does not work as the README describes
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The more of this you can fill in, the faster the problem can be found.
+
+        This form is for the decoders. For a mistake in the specification, use **Error in the documentation** instead. Please do not attach .ADS files - they are Siglent's.
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which script?
+      options:
+        - "firmware_extract/ads_decode_menu.py"
+        - "firmware_extract/ads_decode_full.py"
+        - "doc/build_ads_format_spec.py"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Script version
+      description: ads_decode_menu.py prints its version at start-up.
+      placeholder: "1.5 (2026-08-30)"
+    validations:
+      required: true
+  - type: input
+    id: ads
+    attributes:
+      label: Firmware file
+      description: The instrument model, the firmware version, and the .ADS file name and size.
+      placeholder: "SDG2122X, 2.01.01.37R3, SDG2000X_V2.01.01.37R3.ADS, 12,345,678 bytes"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and Python version
+      placeholder: "Windows 11 23H2, Python 3.12.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: What were you doing?
+      options:
+        - "Decoding or listing an .ADS file"
+        - "Extracting the payload"
+        - "Repackaging"
+        - "Building the specification PDF"
+        - "Something else"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include any message the program or the instrument showed, word for word.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence that shows the problem, and whether it happens every time.
+      placeholder: |
+        1. python firmware_extract/ads_decode_menu.py
+        2. ...
+    validations:
+      required: false
+  - type: textarea
+    id: output
+    attributes:
+      label: Console output
+      description: The command line and everything the script printed.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Anything else that helps. Never install a repackaged .ADS to test a fix unless you accept the risk described in the README.
+    validations:
+      required: false
